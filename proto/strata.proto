@@ -1,0 +1,84 @@
+syntax = "proto3";
+
+package strata;
+
+// ── Messages ──────────────────────────────────────────────────────────────────
+
+message FeatureRequest {
+  string entity_id    = 1;
+  repeated string feature_names = 2;
+  string entity_key   = 3;
+}
+
+message FeatureValue {
+  string feature_name = 1;
+  string value        = 2;  // JSON-serialised
+  string computed_at  = 3;  // ISO 8601
+}
+
+message FeatureResponse {
+  string entity_id             = 1;
+  repeated FeatureValue features = 2;
+  double latency_ms            = 3;
+}
+
+message BatchFeatureRequest {
+  repeated string entity_ids    = 1;
+  repeated string feature_names = 2;
+  string entity_key             = 3;
+}
+
+message BatchFeatureResponse {
+  repeated FeatureResponse results = 1;
+  double latency_ms               = 2;
+}
+
+message IngestRequest {
+  string feature_name = 1;
+  string entity_id    = 2;
+  string value        = 3;  // JSON-serialised
+  string computed_at  = 4;  // ISO 8601 (optional)
+}
+
+message IngestResponse {
+  string status       = 1;
+  string feature_name = 2;
+}
+
+message BatchIngestRequest {
+  repeated IngestRequest records = 1;
+}
+
+message BatchIngestResponse {
+  int32 accepted = 1;
+  int32 total    = 2;
+}
+
+message HealthRequest {}
+
+message HealthResponse {
+  string status           = 1;
+  string redis            = 2;
+  string duckdb           = 3;
+  string minio            = 4;
+  double uptime_seconds   = 5;
+}
+
+// ── Service ───────────────────────────────────────────────────────────────────
+
+service StrataService {
+  // Online single-entity feature retrieval
+  rpc GetFeatures(FeatureRequest) returns (FeatureResponse);
+
+  // Batch retrieval for up to 1000 entities in one call
+  rpc BatchGetFeatures(BatchFeatureRequest) returns (BatchFeatureResponse);
+
+  // Ingest a single feature value
+  rpc IngestFeature(IngestRequest) returns (IngestResponse);
+
+  // Ingest a batch of feature values
+  rpc BatchIngestFeatures(BatchIngestRequest) returns (BatchIngestResponse);
+
+  // Health check
+  rpc HealthCheck(HealthRequest) returns (HealthResponse);
+}

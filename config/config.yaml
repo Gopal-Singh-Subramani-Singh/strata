@@ -1,0 +1,43 @@
+server:
+  host: "0.0.0.0"
+  port: 8003
+  log_level: "info"
+
+redis:
+  url: "redis://localhost:6379"
+  db: 0
+  max_connections: 20
+  key_prefix: "strata"
+  default_ttl_seconds: 3600
+
+duckdb:
+  db_path: ":memory:"
+  threads: 4
+
+minio:
+  endpoint: "http://localhost:9000"
+  access_key: "minioadmin"
+  secret_key: "minioadmin"
+  bucket: "strata-features"
+  secure: false
+
+sqlite:
+  db_path: "strata_registry.db"
+
+materialisation:
+  schedule_interval_seconds: 300
+  batch_size: 1000
+  max_lag_seconds: 3600
+  enabled: true
+
+consistency:
+  sample_size: 100
+  tolerance: 0.01
+  check_interval_seconds: 600
+
+freshness:
+  alert_threshold_multiplier: 2.0
+  webhook_url: null
+
+prometheus:
+  enabled: true
