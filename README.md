@@ -18,37 +18,35 @@ Training-serving skew is one of the most common sources of silent model degradat
 
 ## Architecture
 
-```
-SDK (strata.get / strata.log / strata.get_historical)
-    │
-    ├── Online Path (real-time inference)
-    │     └── FastAPI /features/get → Redis Hash → <response>
-    │         latency: designed for low-latency serving
-    │
-    └── Offline Path (training data)
-          └── FastAPI /features/historical → DuckDB ASOF JOIN
-                    └── Parquet files in MinIO
-                    └── Point-in-time correct retrieval
+```mermaid
+flowchart TD
+    SDK([SDK\nstrata.get / strata.log\nstrata.get_historical]) --> ONLINE
+    SDK --> OFFLINE
+    SDK --> GRPC[gRPC Batch API\nbulk entity feature fetch]
 
-Materialiser (APScheduler)
-    └── Reads offline Parquet → writes to Redis online store
-    └── Runs on configurable schedule (e.g., every 15 minutes)
+    subgraph ONLINE [Online Path — real-time inference]
+        OA[FastAPI /features/get] --> REDIS[(Redis Hash\nlow-latency serving\nconfigurable TTL)]
+    end
 
-Consistency Validator
-    └── Samples online vs offline values
-    └── Flags mismatches above tolerance threshold
+    subgraph OFFLINE [Offline Path — training data]
+        OB[FastAPI /features/historical] --> DUCK[DuckDB ASOF JOIN\npoint-in-time correct]
+        DUCK --> PARQ[(Parquet files\nin MinIO)]
+    end
 
-Feature Registry (SQLite)
-    └── Stores feature definitions, types, metadata, TTL
+    MAT[Materialiser\nAPScheduler\noffline → online sync] -->|reads| PARQ
+    MAT -->|writes| REDIS
 
-Lineage DAG
-    └── Tracks upstream sources and downstream consumers
+    CV[Consistency Validator\nsamples online vs offline\nflags mismatches] --> REDIS & PARQ
 
-Prometheus Metrics (10 metrics)
-    └── Grafana dashboard included
+    FR[(Feature Registry\nSQLite\nfeature definitions + metadata)] --> OA & OB
 
-gRPC Batch API
-    └── proto/strata.proto — bulk entity feature fetch
+    LIN[Lineage DAG\nupstream sources\n+ downstream consumers] --> FR
+
+    REDIS & DUCK --> PROM[Prometheus · 10 metrics\n──► Grafana Dashboard]
+
+    style SDK fill:#4A90D9,color:#fff
+    style PROM fill:#2E8B57,color:#fff
+    style CV fill:#E67E22,color:#fff
 ```
 
 ---
