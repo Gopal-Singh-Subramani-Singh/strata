@@ -1,24 +1,78 @@
-# Strata — Distributed Feature Store
+<p align="center">
+  <img src="docs/strata.png" alt="Strata Logo" width="180">
+</p>
 
-Dual-store feature store with point-in-time correct ASOF joins. Eliminates training-serving skew. Built for Apple Silicon. $0 budget. Fully local.
+<h1 align="center">Strata</h1>
+
+<p align="center">
+  <strong>Distributed Feature Store</strong>
+</p>
+
+<p align="center">
+  Dual-store feature store with Redis online serving, DuckDB/Parquet offline storage,
+  MinIO-backed artifacts, and point-in-time correct ASOF joins.
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Python-3.11-blue" alt="Python">
+  <img src="https://img.shields.io/badge/FastAPI-REST%20API-green" alt="FastAPI">
+  <img src="https://img.shields.io/badge/Redis-Online%20Store-red" alt="Redis">
+  <img src="https://img.shields.io/badge/DuckDB-ASOF%20JOIN-purple" alt="DuckDB">
+  <img src="https://img.shields.io/badge/Local--First-Apple%20Silicon-lightgrey" alt="Local First">
+</p>
 
 ---
 
-## What it does
+## Overview
 
-Strata provides two coordinated feature stores: a Redis-backed online store for low-latency real-time serving, and a DuckDB/Parquet/MinIO offline store for training data. Features materialize from offline to online on a schedule. DuckDB's native ASOF JOIN enforces point-in-time correctness — ensuring training datasets only use feature values that were available at the time of each label event.
+**Strata** is a local-first feature store designed to prevent training-serving skew.
+
+It provides two coordinated storage paths:
+
+* a **Redis-backed online store** for low-latency real-time inference
+* a **DuckDB/Parquet/MinIO offline store** for historical training data
+
+Feature values are ingested into the offline store, materialized into the online store, and retrieved historically using DuckDB's ASOF JOIN to preserve point-in-time correctness.
 
 ---
 
-## Why it matters
+## Why It Matters
 
-Training-serving skew is one of the most common sources of silent model degradation. It happens when training data uses feature values that would not have been available at prediction time — a form of future leakage. Feature stores solve this by maintaining an append-only event log and using ASOF joins to retrieve the historically correct feature value for any (entity, timestamp) pair. Strata implements this pattern using DuckDB's built-in ASOF JOIN, with Redis providing the low-latency online path.
+Training-serving skew is one of the most common causes of silent model degradation. It happens when a training dataset uses feature values that would not have been available at prediction time.
+
+That creates future leakage: the model appears strong offline, but performs worse in production.
+
+Strata addresses this by maintaining historical feature values and retrieving the most recent feature value available before each label event.
+
+---
+
+## Why ASOF JOIN Matters
+
+Without point-in-time correctness:
+
+```text id="dzxco5"
+label event at 12:00
+  ✗ use feature computed at 14:00
+  → future leakage
+  → inflated offline metrics
+```
+
+With ASOF JOIN:
+
+```text id="0yx4va"
+label event at 12:00
+  ✓ use feature computed at 11:00
+  → clean training data
+  → honest offline evaluation
+```
+
+DuckDB's native ASOF JOIN makes this historical lookup efficient and explicit.
 
 ---
 
 ## Architecture
 
-```mermaid
+```mermaid id="md1u3g"
 flowchart TD
     SDK([SDK\nstrata.get / strata.log\nstrata.get_historical]) --> ONLINE
     SDK --> OFFLINE
@@ -42,7 +96,7 @@ flowchart TD
 
     LIN[Lineage DAG\nupstream sources\n+ downstream consumers] --> FR
 
-    REDIS & DUCK --> PROM[Prometheus · 10 metrics\n──► Grafana Dashboard]
+    REDIS & DUCK --> PROM[Prometheus · 10 metrics\nGrafana dashboard]
 
     style SDK fill:#4A90D9,color:#fff
     style PROM fill:#2E8B57,color:#fff
@@ -51,53 +105,43 @@ flowchart TD
 
 ---
 
-## Why ASOF JOIN Matters
-
-Without point-in-time correctness:
-
-```
-label event at 12:00
-  ✗ use feature computed at 14:00 (future — unknown at prediction time)
-  → model sees data it couldn't have had → future leakage → inflated offline metrics
-```
-
-With ASOF JOIN:
-
-```
-label event at 12:00
-  ✓ use feature computed at 11:00 (most recent value before the event)
-  → clean training data → honest offline evaluation
-```
-
-DuckDB's native ASOF JOIN enforces this invariant efficiently at any scale.
-
----
-
 ## Features
 
-- **Feature definition DSL**: register features with name, type, TTL, and metadata via REST or SDK
-- **Redis online store**: designed for low-latency online serving with configurable TTL
-- **DuckDB/Parquet offline store**: append-only event log; ASOF JOIN for point-in-time retrieval
-- **MinIO object storage**: Parquet files versioned in local S3-compatible storage
-- **Materialisation**: offline → online sync on configurable APScheduler schedule
-- **Consistency validator**: samples online vs offline; flags mismatches above tolerance
-- **Feature lineage DAG**: tracks upstream data sources and downstream model consumers
-- **Python SDK**: `strata.get()`, `strata.log()`, `strata.get_historical()`
-- **gRPC batch API**: bulk entity feature fetch in a single call
-- **10 Prometheus metrics**: latency, freshness, cache hits, materialisation lag, consistency mismatches
-- **Grafana dashboard**: pre-configured feature store monitoring dashboard
+* **Feature definition DSL** for registering names, types, TTLs, and metadata
+* **Redis online store** for low-latency serving
+* **DuckDB/Parquet offline store** with append-only feature history
+* **MinIO object storage** for local S3-compatible Parquet storage
+* **Point-in-time historical retrieval** using DuckDB ASOF JOIN
+* **Offline-to-online materialization** with APScheduler
+* **Consistency validation** between online and offline stores
+* **Feature lineage DAG** for tracking sources and downstream consumers
+* **Python SDK** with `strata.get()`, `strata.log()`, and `strata.get_historical()`
+* **gRPC batch API** for bulk feature retrieval
+* **Prometheus metrics** for latency, freshness, materialization, and consistency
+* **Grafana dashboard** for feature store monitoring
 
 ---
 
 ## Tech Stack
 
-Python · FastAPI · Redis · DuckDB · Parquet · MinIO · SQLite · APScheduler · Prometheus · Grafana · gRPC · Docker
+| Area           | Tools                  |
+| -------------- | ---------------------- |
+| API            | FastAPI, gRPC          |
+| Online Store   | Redis                  |
+| Offline Store  | DuckDB, Parquet        |
+| Object Storage | MinIO                  |
+| Registry       | SQLite                 |
+| Scheduling     | APScheduler            |
+| SDK            | Python client          |
+| Metrics        | Prometheus             |
+| Dashboard      | Grafana                |
+| Runtime        | Docker, Docker Compose |
 
 ---
 
 ## Project Structure
 
-```
+```text id="odzo9f"
 strata/
 ├── strata_core/
 │   ├── main.py              # FastAPI app, lifespan, all routes
@@ -108,8 +152,8 @@ strata/
 │   ├── materialiser.py      # APScheduler materialisation jobs
 │   ├── validator.py         # Online vs offline consistency checker
 │   ├── lineage.py           # Feature lineage DAG
-│   ├── metrics.py           # Prometheus metrics (10 metrics)
-│   └── models.py            # All Pydantic models
+│   ├── metrics.py           # Prometheus metrics
+│   └── models.py            # Pydantic models
 ├── config/
 │   ├── settings.py
 │   └── config.yaml
@@ -117,7 +161,7 @@ strata/
 │   └── client.py            # Python SDK
 ├── proto/
 │   └── strata.proto         # gRPC service definition
-├── tests/                   # 30+ pytest tests
+├── tests/                   # Pytest test suite
 ├── demo/
 │   └── fraud_feature_store.py
 ├── docker-compose.yml
@@ -131,55 +175,49 @@ strata/
 
 ### 1. Install dependencies
 
-```bash
+```bash id="vfv6ae"
 cd strata
 pip install -r requirements.txt
 ```
 
 ### 2. Start infrastructure
 
-```bash
-cd strata
+```bash id="oeutfb"
 docker compose up redis minio prometheus grafana -d
 ```
 
 ### 3. Start Strata
 
-```bash
-cd strata
+```bash id="dz3y3k"
 uvicorn strata_core.main:app --port 8003 --reload
 ```
 
 ### 4. Run tests
 
-```bash
-cd strata
+```bash id="280qqq"
 pytest tests/ -v
 ```
 
-### 5. Run the fraud feature store demo
+### 5. Run the demo
 
-```bash
-cd strata
+```bash id="rjbned"
 python demo/fraud_feature_store.py
 ```
 
 ---
 
-## API / CLI Usage
+## SDK Usage
 
-### SDK usage
-
-```python
+```python id="khex5o"
 import sdk as strata
+from datetime import datetime
 
 strata.init("http://localhost:8003")
 
-# Online serving (real-time inference)
+# Online serving path
 features = strata.get("user_001", ["tx_count_1h", "avg_amount_7d"])
 
-# Historical (point-in-time correct training data)
-from datetime import datetime
+# Point-in-time historical path
 history = strata.get_historical(
     entity_ids=["user_001", "user_002"],
     timestamps=[datetime(2024, 1, 15), datetime(2024, 1, 16)],
@@ -190,77 +228,76 @@ history = strata.get_historical(
 strata.log("tx_count_1h", "user_001", 42.0)
 ```
 
-### Key API Endpoints
-
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/features` | Register a feature |
-| GET | `/features` | List all features |
-| POST | `/features/get` | Online get (real-time) |
-| POST | `/features/batch-get` | Batch online get |
-| POST | `/features/ingest` | Ingest a single value |
-| POST | `/features/ingest/batch` | Ingest a batch |
-| POST | `/features/historical` | ASOF historical get (training) |
-| POST | `/features/{name}/materialise` | Run materialisation now |
-| POST | `/features/{name}/validate` | Consistency check |
-| GET | `/features/{name}/lineage` | Feature lineage |
-| GET | `/health` | Health check |
-| GET | `/metrics` | Prometheus metrics |
-
-Interactive docs: `http://localhost:8003/docs`
-
 ---
 
-## Tests
+## API Endpoints
 
-```bash
-# Run all tests (no Redis or MinIO needed — all mocked)
-pytest tests/ -v
+| Method | Path                           | Description                     |
+| ------ | ------------------------------ | ------------------------------- |
+| POST   | `/features`                    | Register a feature              |
+| GET    | `/features`                    | List all features               |
+| POST   | `/features/get`                | Online feature get              |
+| POST   | `/features/batch-get`          | Batch online get                |
+| POST   | `/features/ingest`             | Ingest a feature value          |
+| POST   | `/features/ingest/batch`       | Ingest feature values in batch  |
+| POST   | `/features/historical`         | Point-in-time historical lookup |
+| POST   | `/features/{name}/materialise` | Materialize a feature now       |
+| POST   | `/features/{name}/validate`    | Run consistency validation      |
+| GET    | `/features/{name}/lineage`     | Get feature lineage             |
+| GET    | `/health`                      | Health check                    |
+| GET    | `/metrics`                     | Prometheus metrics              |
 
-# With coverage
-pytest tests/ -v --cov=strata_core
+Interactive docs:
+
+```text id="mi8ebu"
+http://localhost:8003/docs
 ```
-
-30+ tests covering: feature registration, online get/set, offline ASOF join, materialisation, consistency validator, lineage, metrics, SDK.
 
 ---
 
 ## Observability
 
-### Prometheus metrics (at `/metrics`)
+Strata exposes Prometheus metrics at:
 
-| Metric | Type | Description |
-|--------|------|-------------|
-| `strata_online_reads_total` | Counter | Online store reads (by feature, hit/miss) |
-| `strata_online_latency_seconds` | Histogram | Online read latency |
-| `strata_offline_reads_total` | Counter | Offline ASOF join reads |
-| `strata_offline_latency_seconds` | Histogram | Offline join latency |
-| `strata_ingestion_total` | Counter | Feature values ingested (by store) |
-| `strata_materialisation_runs_total` | Counter | Materialisation runs (by status) |
-| `strata_materialisation_lag_seconds` | Gauge | Lag since last materialisation |
-| `strata_feature_freshness_seconds` | Gauge | Age of most recent online value |
-| `strata_consistency_mismatches_total` | Counter | Online vs offline mismatches |
-| `strata_registered_features_total` | Gauge | Total registered features |
+```text id="h7xtdm"
+http://localhost:8003/metrics
+```
+
+### Metrics
+
+| Metric                                | Type      | Description                                |
+| ------------------------------------- | --------- | ------------------------------------------ |
+| `strata_online_reads_total`           | Counter   | Online store reads by feature and hit/miss |
+| `strata_online_latency_seconds`       | Histogram | Online read latency                        |
+| `strata_offline_reads_total`          | Counter   | Offline ASOF join reads                    |
+| `strata_offline_latency_seconds`      | Histogram | Offline join latency                       |
+| `strata_ingestion_total`              | Counter   | Feature values ingested by store           |
+| `strata_materialisation_runs_total`   | Counter   | Materialization runs by status             |
+| `strata_materialisation_lag_seconds`  | Gauge     | Lag since last materialization             |
+| `strata_feature_freshness_seconds`    | Gauge     | Age of most recent online value            |
+| `strata_consistency_mismatches_total` | Counter   | Online vs offline mismatches               |
+| `strata_registered_features_total`    | Gauge     | Total registered features                  |
 
 ---
 
 ## Demo
 
-```bash
-# Navigate to strata directory
-cd strata
-
-# Run the fraud feature store demo
-# - Registers features
-# - Ingests historical data
-# - Runs ASOF historical query
-# - Checks consistency
+```bash id="fa40n4"
 python demo/fraud_feature_store.py
+```
 
-# Interactive API exploration
-open http://localhost:8003/docs
+The demo flow:
 
-# Manual online get
+```text id="bk6na8"
+Registers features
+Ingests historical feature data
+Runs ASOF historical lookup
+Checks online/offline consistency
+```
+
+Manual online get:
+
+```bash id="l7svq2"
 curl -X POST http://localhost:8003/features/get \
   -H "Content-Type: application/json" \
   -d '{"entity_id": "user_001", "feature_names": ["tx_count_1h"]}'
@@ -268,33 +305,53 @@ curl -X POST http://localhost:8003/features/get \
 
 ---
 
+## Screenshots
+
+![](docs/Picture1.png)
+
+![](docs/Picture2.png)
+
+![](docs/Picture3.png)
+
+![](docs/Picture4.png)
+
+![](docs/Picture5.png)
+
+![](docs/Picture6.png)
+
+---
+
+## Tests
+
+```bash id="w0x8ax"
+pytest tests/ -v
+```
+
+With coverage:
+
+```bash id="pf77i8"
+pytest tests/ -v --cov=strata_core
+```
+
+The test suite covers feature registration, online get/set, offline ASOF joins, materialization, consistency validation, lineage, metrics, and SDK behavior.
+
+---
+
 ## Known Limitations
 
-- **Redis required for online store**: The online path is designed around Redis Hash operations. Without Redis, online serving is unavailable.
-- **MinIO required for offline store**: The offline Parquet store uses MinIO as an S3-compatible backend. Without MinIO, offline queries and materialisation are unavailable.
-- **gRPC stub generation**: The gRPC batch API is defined in `proto/strata.proto` but requires stub generation before use (`python -m grpc_tools.protoc ...`). Generated stubs are not committed to the repository.
-- **No schema evolution**: Changing a feature's type after registration is not supported. Delete and re-register the feature with a new name.
-- **Materialisation is append-only**: The materialiser syncs the latest offline values to online. It does not support backfilling historical online values.
-- **Local-scale design**: Strata is designed for a single-machine deployment. It is not a distributed feature store like Feast or Tecton.
+* **Redis required for online serving**: The online path depends on Redis Hash operations.
+* **MinIO required for offline storage**: The offline Parquet store uses MinIO as its local S3-compatible backend.
+* **gRPC stubs must be generated**: The batch API is defined in `proto/strata.proto`, but generated stubs are not committed.
+* **No schema evolution**: Changing a feature type after registration is not supported.
+* **Append-only materialization**: The materializer syncs latest offline values to online and does not backfill historical online values.
+* **Single-machine design**: Strata is built as a local feature store, not a distributed production alternative to Feast or Tecton.
 
 ---
 
 ## Future Work
 
-- Schema evolution support (feature versioning)
-- Streaming feature ingestion (Kafka / Flink compatibility)
-- Feature serving SDK for multiple languages (Go, Java)
-- Distributed online store (Redis Cluster)
-- Feature monitoring integration with Argus
-
----
-
-
-
-##Screenshots
-![](docs/Picture1.png)
-![](docs/Picture2.png)
-![](docs/Picture3.png)
-![](docs/Picture4.png)
-![](docs/Picture5.png)
-![](docs/Picture6.png)
+* Feature versioning and schema evolution
+* Streaming ingestion through Kafka or Flink-compatible connectors
+* Multi-language SDKs for Go and Java
+* Redis Cluster support
+* Integration with Argus for feature monitoring
