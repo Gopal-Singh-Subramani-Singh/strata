@@ -292,3 +292,11 @@ curl -X POST http://localhost:8003/features/get \
 ## Resume Bullet
 
 > Built a local-first feature store with Redis online serving, DuckDB/Parquet offline storage, point-in-time correct ASOF joins, and a Python SDK for batch and low-latency feature retrieval.
+
+##Screenshots
+![](docs/Picture1.png)
+![](docs/Picture2.png)
+![](docs/Picture3.png)
+![](docs/Picture4.png)
+![](docs/Picture5.png)
+![](docs/Picture6.png)
